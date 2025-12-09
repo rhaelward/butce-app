@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bütçe Planlama</title>
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#06b6d4">
+
+  <!-- iOS için ikon / splash davranışı biraz daha ekstra ister ama şimdilik bu kadarı yeter -->
+  <style>
+    :root {
+      --bg:#0f172a;
+      --card:#111827;
+      --accent:#06b6d4;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --danger:#ef4444;
+      --success:#22c55e;
+    }
+    * { box-sizing:border-box; font-family: "Segoe UI", sans-serif; }
+    body {
+      margin:0;
+      background: radial-gradient(circle at 20% 20%, #0f172a 0, #0b1224 40%, #060b19 100%);
+      color:var(--text);
+    }
+    header {
+      display:flex;
+      gap:8px;
+      padding:12px;
+      position:sticky;
+      top:0;
+      background:rgba(6,11,25,0.9);
+      backdrop-filter: blur(8px);
+      z-index:1;
+    }
+    button.tab {
+      flex:1;
+      padding:12px;
+      border:none;
+      border-radius:10px;
+      background:#1f2937;
+      color:var(--text);
+      cursor:pointer;
+      transition:.2s;
+    }
+    button.tab.active {
+      background:var(--accent);
+      color:#0b1224;
+      font-weight:700;
+    }
+    main {
+      padding:16px;
+      max-width:1100px;
+      margin:auto;
+      display:grid;
+      gap:14px;
+    }
+    .card {
+      background:var(--card);
+      border:1px solid #1f2937;
+      border-radius:12px;
+      padding:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.25);
+    }
+    h2 { margin:0 0 10px 0; font-size:18px; }
+    h3 { margin:0 0 8px 0; font-size:16px; }
+    .grid {
+      display:grid;
+      gap:10px;
+      grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+    }
+    .stats {
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .pill {
+      padding:10px;
+      border-radius:10px;
+      background:#1f2937;
+      flex:1;
+      min-width:200px;
+    }
+    .pill strong {
+      display:block;
+      color:var(--muted);
+      font-size:12px;
+      letter-spacing:0.5px;
+    }
+    .list {
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .row {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:10px;
+      border-radius:10px;
+      background:#0b1224;
+      border:1px solid #1f2937;
+    }
+    .tag {
+      padding:4px 8px;
+      border-radius:8px;
+      background:#1f2937;
+      color:var(--muted);
+      font-size:12px;
+    }
+    form { display:grid; gap:10px; }
+    input, select, textarea {
+      width:100%;
+      padding:10px;
+      border-radius:10px;
+      border:1px solid #1f2937;
+      background:#0b1224;
+      color:var(--text);
+    }
+    label {
+      display:grid;
+      gap:6px;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .inline {
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .small { font-size:12px; color:var(--muted); }
+    .day-card {
+      padding:12px;
+      border-radius:12px;
+      background:#0b1224;
+      border:1px solid #1f2937;
+      cursor:pointer;
+      transition:.2s;
+    }
+    .day-card:hover {
+      border-color:var(--accent);
+      transform:translateY(-1px);
+    }
+    .chip {
+      padding:4px 8px;
+      border-radius:8px;
+      font-size:12px;
+    }
+    .green { color:var(--success); }
+    .red { color:var(--danger); }
+    .actions {
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .btn {
+      border:none;
+      border-radius:10px;
+      padding:10px 12px;
+      cursor:pointer;
+      color:#0b1224;
+      background:var(--accent);
+      font-weight:700;
+    }
+    .btn.secondary {
+      background:#1f2937;
+      color:var(--text);
+    }
+    .hidden { display:none !important; }
+
+    /* Modal */
+    .modal {
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(15,23,42,0.7);
+      z-index:50;
+      padding:16px;
+    }
+    .modal-content {
+      max-width:420px;
+      width:100%;
+      background:var(--card);
+      border-radius:12px;
+      padding:20px;
+      border:1px solid #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <button class="tab active" data-tab="daily">Günlük</button>
+    <button class="tab" data-tab="monthly">Aylık</button>
+    <button class="tab" data-tab="history">Kayıtlar & Planlılar</button>
+    <button class="tab" data-tab="add">Gelir/Gider Ekle</button>
+    <button class="tab" data-tab="stats">İstatistik</button>
+    <button class="tab" data-tab="settings">Ayarlar</button>
+  </header>
+
+  <main id="content"></main>
+
+  <!-- Düzenleme Modalı -->
+  <div id="editModal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Kaydı Düzenle</h2>
+      <form id="editForm">
+        <div class="inline">
+          <label style="flex:1;">Tür
+            <select name="type">
+              <option value="gelir">Gelir</option>
+              <option value="gider">Gider</option>
+            </select>
+          </label>
+          <label style="flex:1;">Tutar
+            <input name="amount" type="text" required />
+          </label>
+        </div>
+        <label>Açıklama
+          <input name="desc" />
+        </label>
+        <label>Kategori
+          <select name="category"></select>
+        </label>
+        <label>Tarih
+          <input name="date" type="date" />
+        </label>
+        <div class="actions" style="margin-top:10px;">
+          <button type="button" class="btn secondary" id="editCancel">İptal</button>
+          <button type="submit" class="btn">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    /************ UTIL ************/
+    const todayStr = () => new Date().toISOString().slice(0,10);
+    const uid = () => crypto.randomUUID();
+
+    function parseAmount(str) {
+      if (!str) return 0;
+      str = String(str).trim();
+      str = str.replace(/\./g,"").replace(",",".");
+      const n = Number(str);
+      return isNaN(n) ? 0 : n;
+    }
+
+    function formatCurrency(v) {
+      return new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(v || 0);
+    }
+
+    function autoFormatAmount(input) {
+      input.addEventListener("input", function () {
+        let val = this.value;
+
+        // Sadece rakam, nokta, virgül bırak
+        val = val.replace(/[^0-9.,]/g,"");
+
+        // Virgül varsa: lira,kuruş şeklinde ele al
+        if (val.includes(",")) {
+          let [lira, kurus] = val.split(",");
+          lira = (lira || "").replace(/\./g,"").replace(/\D/g,"");
+          kurus = (kurus || "").replace(/\D/g,"").slice(0,2);
+          if (!lira) { this.value = ""; return; }
+          lira = lira.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+          this.value = kurus ? `${lira},${kurus}` : lira + ",";
+          return;
+        }
+
+        // Virgül yoksa sadece binlik formatla
+        val = val.replace(/\./g,"").replace(/\D/g,"");
+        if (!val) { this.value = ""; return; }
+        val = val.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+        this.value = val;
+      });
+    }
+
+    /************ STATE ************/
+    const store = {
+      load() {
+        try {
+          const raw = localStorage.getItem("budget-app");
+          if (!raw) return this.default();
+          const obj = JSON.parse(raw);
+          return obj || this.default();
+        } catch {
+          return this.default();
+        }
+      },
+      save(s) { localStorage.setItem("budget-app", JSON.stringify(s)); },
+      default() {
+        return {
+          entries: [],
+          categories: ["Maaş","Market","Ulaşım","Kira","Eğlence","Fatura"],
+          recurring: [],
+          selectedDate: todayStr(),
+          meta: { lastRecurringAppliedMonth: null }
+        };
+      }
+    };
+
+    let state = store.load();
+    let currentTab = "daily";
+    let editingId = null;
+
+    const ui = {
+      historyMonth: todayStr().slice(0,7),
+      historyType: "all",
+      historyCategory: "Tümü",
+      historyText: ""
+    };
+
+    function ensureStateShape() {
+      if (!state || typeof state !== "object") state = store.default();
+      if (!Array.isArray(state.entries)) state.entries = [];
+      if (!Array.isArray(state.categories) || !state.categories.length) {
+        state.categories = ["Maaş","Market","Ulaşım","Kira","Eğlence","Fatura"];
+      }
+      if (!Array.isArray(state.recurring)) state.recurring = [];
+      if (!state.selectedDate) state.selectedDate = todayStr();
+      if (!state.meta) state.meta = {};
+      if (typeof state.meta.lastRecurringAppliedMonth !== "string" && state.meta.lastRecurringAppliedMonth !== null) {
+        state.meta.lastRecurringAppliedMonth = null;
+      }
+    }
+    ensureStateShape();
+
+    function persist() { store.save(state); }
+
+    // Her ay 1 defa sabit gelir/giderleri otomatik uygula
+    function ensureRecurringApplied() {
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+
+      if (state.meta.lastRecurringAppliedMonth === ym) return;
+
+      const nowIso = new Date().toISOString();
+      state.recurring.forEach(r => {
+        const day = String(Math.min(Math.max(1, r.day), 31)).padStart(2,"0");
+        const date = `${ym}-${day}`;
+        state.entries.push({
+          id: uid(),
+          type: r.type,
+          amount: r.amount,
+          desc: r.title,
+          category: r.category,
+          date,
+          planned: true,
+          confirmed: false,
+          createdAt: nowIso
+        });
+      });
+
+      state.meta.lastRecurringAppliedMonth = ym;
+      persist();
+    }
+
+    // Eski popup sorusunu iptal ettik, artık UI üzerinden yönetiliyor
+    function checkDuePlanned() {
+      // bilerek boş bırakıldı
+    }
+    checkDuePlanned();
+    ensureRecurringApplied();
+
+    function isRealEntry(e) {
+      return !e.planned || e.confirmed === true;
+    }
+
+    function computeBalances() {
+      const actual = state.entries.reduce((s, e) => {
+        return s + (isRealEntry(e) ? (e.type === "gelir" ? e.amount : -e.amount) : 0);
+      }, 0);
+
+      return { actual };
+    }
+
+    /************ TABS ************/
+    function setTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+      if (tab === "daily") renderDaily();
+      if (tab === "monthly") renderMonthly();
+      if (tab === "history") renderHistory();
+      if (tab === "add") renderAdd();
+      if (tab === "stats") renderStats();
+      if (tab === "settings") renderSettings();
+    }
+
+    /************ DAILY ************/
+    function renderDaily() {
+      const c = document.getElementById("content");
+      const selected = state.selectedDate || todayStr();
+      const today = todayStr();
+
+      const allEntries = state.entries
+        .filter(e => e.date === selected)
+        .sort((a,b)=> a.createdAt > b.createdAt ? -1 : 1);
+
+      const entries = allEntries.filter(isRealEntry);
+
+      const spend = entries
+        .filter(e => e.type === "gider")
+        .reduce((s,e)=> s + e.amount, 0);
+
+      const { actual } = computeBalances();
+
+      // Planlı sonrası bakiye (sadece gelecekteki planlı işlemler)
+      const plannedImpact = state.entries
+        .filter(e => e.planned && e.date > selected)
+        .reduce((s, e) => s + (e.type === "gelir" ? e.amount : -e.amount), 0);
+      const afterPlanned = actual + plannedImpact;
+
+      // Vadesi gelen veya gecikmiş planlı işlemler
+      const duePlanned = state.entries.filter(e => e.planned && !e.confirmed && e.date <= today);
+
+      const notifHtml = duePlanned.length ? `
+        <div class="card">
+          <div class="inline" style="justify-content:space-between;">
+            <div>
+              <h2>Planlı hareket hatırlatma</h2>
+              <div class="small">${duePlanned.length} adet vadesi gelen veya gecikmiş planlı hareketiniz var.</div>
+            </div>
+            <button class="btn secondary" data-goto="planned">Görüntüle</button>
+          </div>
+        </div>
+      ` : "";
+
+      c.innerHTML = `
+        ${notifHtml}
+        <div class="card">
+          <div class="inline" style="justify-content:space-between;">
+            <h2>${selected} Günlük Özeti</h2>
+            <input type="date" id="dayPicker" value="${selected}" />
+          </div>
+          <div class="stats">
+            <div class="pill">
+              <strong>Gerçek Bakiye</strong>
+              <div>${formatCurrency(actual)}</div>
+            </div>
+            <div class="pill">
+              <strong>Günlük Harcama</strong>
+              <div>${formatCurrency(spend)}</div>
+            </div>
+            <div class="pill">
+              <strong>Planlı Sonrası Bakiye</strong>
+              <div>${formatCurrency(afterPlanned)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Hareketler</h2>
+          <div class="list">
+            ${entries.length ? entries.map(e=>`
+              <div class="row">
+                <div>
+                  <div class="${e.type==="gelir"?"green":"red"}">
+                    ${e.type==="gelir"?"+":"-"} ${formatCurrency(e.amount)}
+                  </div>
+                  <div class="small">${e.desc || "—"}</div>
+                  <div class="small">${e.date}</div>
+                </div>
+                <div class="actions">
+                  <span class="tag">${e.category || "Kategori"}</span>
+                  ${e.planned ? '<span class="tag">Planlı</span>' : ''}
+                  <button class="btn secondary btn-edit" data-id="${e.id}" style="padding:6px 10px;">Düzenle</button>
+                  <button class="btn secondary btn-delete" data-id="${e.id}" style="padding:6px 10px;">Sil</button>
+                </div>
+              </div>
+            `).join("") : "<div class='small'>Kayıt yok</div>"}
+          </div>
+        </div>
+      `;
+
+      document.getElementById("dayPicker").onchange = ev => {
+        state.selectedDate = ev.target.value || todayStr();
+        persist();
+        renderDaily();
+      };
+
+      const gotoBtn = c.querySelector('[data-goto="planned"]');
+      if (gotoBtn) {
+        gotoBtn.onclick = () => setTab("history");
+      }
+
+      attachEditDeleteHandlers(c, renderDaily);
+    }
+
+    /************ MONTHLY ************/
+    function renderMonthly() {
+      const c = document.getElementById("content");
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const dayMap = {};
+      state.entries.forEach(e => {
+        if (!isRealEntry(e)) return;
+        const d = new Date(e.date);
+        if (isNaN(d)) return;
+        if (d.getFullYear() !== year || d.getMonth() !== month) return;
+        const day = d.getDate();
+        if (!dayMap[day]) dayMap[day] = { inc: 0, exp: 0 };
+        if (e.type === "gelir") dayMap[day].inc += e.amount;
+        else dayMap[day].exp += e.amount;
+      });
+
+      const totalIncome = Object.values(dayMap).reduce((s, d) => s + d.inc, 0);
+      const totalExpense = Object.values(dayMap).reduce((s, d) => s + d.exp, 0);
+      const netTotal = totalIncome - totalExpense;
+
+      c.innerHTML = `
+        <div class="card">
+          <h2>${year}-${String(month + 1).padStart(2, "0")} Aylık Görünüm</h2>
+          <div class="grid">
+            ${Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+              const data = dayMap[d] || { inc: 0, exp: 0 };
+              const net = data.inc - data.exp;
+              return `
+                <div class="day-card" data-date="${year}-${String(month + 1).padStart(2,"0")}-${String(d).padStart(2,"0")}">
+                  <div class="inline" style="justify-content:space-between;">
+                    <strong>${d}. Gün</strong>
+                    <span class="chip" style="color:${net >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                      ${net >= 0 ? '+' : '-'}${formatCurrency(Math.abs(net))}
+                    </span>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <h2>Aylık Toplam</h2>
+          <div class="stats">
+            <div class="pill">
+              <strong>Toplam Gelir</strong>
+              <div>${formatCurrency(totalIncome)}</div>
+            </div>
+            <div class="pill">
+              <strong>Toplam Gider</strong>
+              <div>${formatCurrency(totalExpense)}</div>
+            </div>
+            <div class="pill">
+              <strong>Net Toplam</strong>
+              <div class="${netTotal >= 0 ? 'green' : 'red'}">${formatCurrency(netTotal)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      c.querySelectorAll(".day-card").forEach(card => {
+        card.onclick = () => {
+          state.selectedDate = card.dataset.date;
+          persist();
+          setTab("daily");
+        };
+      });
+    }
+
+    /************ HISTORY + PLANLI PANEL ************/
+    function renderHistory() {
+      const c = document.getElementById("content");
+      const today = todayStr();
+      const ym = ui.historyMonth || today.slice(0,7);
+
+      const cats = ["Tümü", ...state.categories];
+
+      let entries = state.entries.filter(e => isRealEntry(e) && e.date && e.date.startsWith(ym));
+      entries = entries.sort((a,b)=>{
+        if (a.date === b.date) return a.createdAt > b.createdAt ? -1 : 1;
+        return a.date > b.date ? -1 : 1;
+      });
+
+      if (ui.historyType !== "all") {
+        entries = entries.filter(e => e.type === ui.historyType);
+      }
+      if (ui.historyCategory && ui.historyCategory !== "Tümü") {
+        entries = entries.filter(e => e.category === ui.historyCategory);
+      }
+      if (ui.historyText) {
+        const q = ui.historyText.toLowerCase();
+        entries = entries.filter(e => (e.desc || "").toLowerCase().includes(q));
+      }
+
+      const pendingPlanned = state.entries
+        .filter(e => e.planned && !e.confirmed)
+        .sort((a,b)=> a.date.localeCompare(b.date));
+
+      c.innerHTML = `
+        <div class="grid">
+          <div class="card">
+            <h2>Hareketler</h2>
+            <div class="inline small" style="margin-bottom:8px; gap:8px;">
+              <label>Ay
+                <input type="month" id="historyMonth" value="${ym}">
+              </label>
+              <label>Tür
+                <select id="historyType">
+                  <option value="all">Tümü</option>
+                  <option value="gelir">Gelir</option>
+                  <option value="gider">Gider</option>
+                </select>
+              </label>
+              <label>Kategori
+                <select id="historyCategory">
+                  ${cats.map(cat=>`<option value="${cat}">${cat}</option>`).join("")}
+                </select>
+              </label>
+              <label>Ara
+                <input type="text" id="historySearch" placeholder="Açıklamada ara" value="${ui.historyText || ""}">
+              </label>
+            </div>
+            <div class="list">
+              ${entries.length ? entries.map(e=>`
+                <div class="row">
+                  <div>
+                    <div class="${e.type==="gelir"?"green":"red"}">${e.type==="gelir"?"+":"-"} ${formatCurrency(e.amount)}</div>
+                    <div class="small">${e.desc || "—"}</div>
+                    <div class="small">${e.date}</div>
+                  </div>
+                  <div class="actions">
+                    <span class="tag">${e.category || "Kategori"}</span>
+                    <button class="btn secondary btn-edit" data-id="${e.id}" style="padding:6px 10px;">Düzenle</button>
+                    <button class="btn secondary btn-delete" data-id="${e.id}" style="padding:6px 10px;">Sil</button>
+                  </div>
+                </div>
+              `).join("") : "<div class='small'>Kayıt yok</div>"}
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Planlı Ödeme ve Gelirler</h2>
+            <div class="small" style="margin-bottom:8px;">
+              Zamanı gelmiş veya gelecekteki tüm planlı işlemler burada listelenir.
+            </div>
+            <div class="list">
+              ${pendingPlanned.length ? pendingPlanned.map(e=>{
+                const oneDay = 1000*60*60*24;
+                const diffMs = new Date(e.date) - new Date(today);
+                const diffDays = Math.round(diffMs / oneDay);
+                let statusText = "";
+                if (diffDays > 0) statusText = `${diffDays} gün kaldı`;
+                else if (diffDays === 0) statusText = "Bugün";
+                else statusText = `${Math.abs(diffDays)} gün gecikti`;
+                const typeLabel = e.type === "gelir" ? "Gelir" : "Gider";
+                return `
+                  <div class="row">
+                    <div>
+                      <div class="${e.type==="gelir"?"green":"red"}">
+                        ${typeLabel}: ${formatCurrency(e.amount)}
+                      </div>
+                      <div class="small">${e.desc || "—"}</div>
+                      <div class="small">Vade: ${e.date} • ${statusText}</div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn secondary" data-confirm-id="${e.id}" style="padding:6px 10px;">
+                        Ödeme yapıldı
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join("") : "<div class='small'>Planlı bekleyen hareket yok.</div>"}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const monthInput = document.getElementById("historyMonth");
+      const typeSelect = document.getElementById("historyType");
+      const catSelect = document.getElementById("historyCategory");
+      const searchInput = document.getElementById("historySearch");
+
+      typeSelect.value = ui.historyType;
+      catSelect.value = ui.historyCategory;
+
+      monthInput.onchange = ev => { ui.historyMonth = ev.target.value || today.slice(0,7); renderHistory(); };
+      typeSelect.onchange = ev => { ui.historyType = ev.target.value; renderHistory(); };
+      catSelect.onchange = ev => { ui.historyCategory = ev.target.value; renderHistory(); };
+      searchInput.oninput = ev => { ui.historyText = ev.target.value; renderHistory(); };
+
+      attachEditDeleteHandlers(c, renderHistory);
+
+      c.querySelectorAll("[data-confirm-id]").forEach(btn=>{
+        btn.onclick = () => {
+          const id = btn.dataset.confirmId;
+          const entry = state.entries.find(e=>e.id === id);
+          if (!entry) return;
+          const todayDate = todayStr();
+          entry.confirmed = true;
+          entry.planned = false;
+          entry.date = todayDate;
+          entry.createdAt = new Date().toISOString();
+          state.selectedDate = todayDate;
+          persist();
+          renderHistory();
+        };
+      });
+    }
+
+    /************ ADD ************/
+    function renderAdd() {
+      const c = document.getElementById("content");
+
+      c.innerHTML = `
+        <div class="card">
+          <h2>Gelir / Gider Ekle</h2>
+          <form id="addForm">
+            <label>Tutar
+              <input name="amount" id="amountInput" placeholder="Örn: 1.250,50" required />
+            </label>
+            <div class="inline">
+              <label style="flex:1;">Tür
+                <select name="type">
+                  <option value="gelir">Gelir</option>
+                  <option value="gider">Gider</option>
+                </select>
+              </label>
+              <label style="flex:1;">Kategori
+                <select name="category">
+                  ${state.categories.map(c=>`<option value="${c}">${c}</option>`).join("")}
+                </select>
+              </label>
+            </div>
+            <label>Açıklama (isteğe bağlı)
+              <input name="desc" />
+            </label>
+            <label>Tarih (boş bırak = bugün)
+              <input name="date" type="date" />
+            </label>
+            <button class="btn" type="submit">Kaydet</button>
+          </form>
+        </div>
+      `;
+
+      autoFormatAmount(document.getElementById("amountInput"));
+
+      document.getElementById("addForm").onsubmit = ev => {
+        ev.preventDefault();
+        const f = new FormData(ev.target);
+        const rawAmount = f.get("amount");
+        const amount = parseAmount(rawAmount);
+        if (!amount) { alert("Geçerli bir tutar girin."); return; }
+
+        const dateVal = f.get("date") || "";
+        const entry = {
+          id: uid(),
+          type: f.get("type"),
+          amount,
+          desc: f.get("desc") || "",
+          category: f.get("category") || "Genel",
+          date: dateVal || todayStr(),
+          planned: !!dateVal,
+          createdAt: new Date().toISOString()
+        };
+
+        state.entries.push(entry);
+        state.selectedDate = entry.date;
+        persist();
+        setTab("daily");
+      };
+    }
+
+    /************ STATS ************/
+    function renderStats() {
+      const c = document.getElementById("content");
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+
+      const monthly = state.entries.filter(e => isRealEntry(e) && e.date.startsWith(ym));
+      const totalIncome = monthly.filter(e=>e.type==="gelir").reduce((s,e)=>s+e.amount,0);
+      const totalExpense = monthly.filter(e=>e.type==="gider").reduce((s,e)=>s+e.amount,0);
+      const net = totalIncome - totalExpense;
+
+      const categories = {};
+      const dayMap = {};
+      monthly.forEach(e=>{
+        if (!categories[e.category]) categories[e.category] = {inc:0,exp:0};
+        if (e.type==="gelir") categories[e.category].inc += e.amount;
+        else categories[e.category].exp += e.amount;
+
+        if (!dayMap[e.date]) dayMap[e.date] = {inc:0,exp:0};
+        if (e.type==="gelir") dayMap[e.date].inc += e.amount;
+        else dayMap[e.date].exp += e.amount;
+      });
+
+      const ratio = totalIncome ? (totalExpense / totalIncome * 100).toFixed(1) : 0;
+      let mostExpenseCat = null;
+      let mostExpenseVal = 0;
+      Object.keys(categories).forEach(cat=>{
+        if (categories[cat].exp > mostExpenseVal) {
+          mostExpenseVal = categories[cat].exp;
+          mostExpenseCat = cat;
+        }
+      });
+
+      const days = Object.keys(dayMap);
+      let profitDays = 0, lossDays = 0;
+      days.forEach(d=>{
+        const netD = dayMap[d].inc - dayMap[d].exp;
+        if (netD > 0) profitDays++;
+        else if (netD < 0) lossDays++;
+      });
+
+      c.innerHTML = `
+        <div class="card">
+          <h2>📊 Aylık Cari Analiz (${ym})</h2>
+          <div class="stats">
+            <div class="pill">
+              <strong>Toplam Gelir</strong>
+              <div>${formatCurrency(totalIncome)}</div>
+            </div>
+            <div class="pill">
+              <strong>Toplam Gider</strong>
+              <div>${formatCurrency(totalExpense)}</div>
+            </div>
+            <div class="pill">
+              <strong>Net</strong>
+              <div class="${net>=0?'green':'red'}">${formatCurrency(net)}</div>
+            </div>
+          </div>
+
+          <div class="grid" style="margin-top:14px;">
+            <div class="card">
+              <h3>Gider / Gelir Oranı</h3>
+              <p class="small">Oran: <strong>${ratio}%</strong></p>
+              <p class="small">
+                ${ratio > 80
+                  ? "⚠ Gelirinizin çok büyük kısmı giderlere gidiyor. Maliyet kısıntısı düşünülmeli."
+                  : ratio > 60
+                  ? "⚠ Gider oranı yüksek seviyede, dikkatli olmakta fayda var."
+                  : "✔ Gider oranı kontrollü seviyede görünüyor."}
+              </p>
+            </div>
+            <div class="card">
+              <h3>Kârlı / Zararlı Gün Sayısı</h3>
+              <p class="small">Kârlı gün: <strong>${profitDays}</strong></p>
+              <p class="small">Zararlı gün: <strong>${lossDays}</strong></p>
+              <p class="small">
+                ${lossDays > profitDays
+                  ? "⚠ Zararlı gün sayısı fazla. Günlük harcama disiplini gözden geçirilebilir."
+                  : "✔ Kârlı gün sayısı daha yüksek, günlük akış genel olarak olumlu."}
+              </p>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Kategori Dağılımı</h3>
+            <div class="list">
+              ${Object.keys(categories).length ? Object.entries(categories).map(([cat,vals])=>`
+                <div class="row">
+                  <div>
+                    <div><strong>${cat}</strong></div>
+                    <div class="small">Gelir: ${formatCurrency(vals.inc)} | Gider: ${formatCurrency(vals.exp)}</div>
+                  </div>
+                  <div class="chip" style="background:rgba(148,163,184,0.1);">
+                    Net: ${formatCurrency(vals.inc - vals.exp)}
+                  </div>
+                </div>
+              `).join("") : "<div class='small'>Bu ay için kayıt yok.</div>"}
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Uzman Yorumu</h3>
+            <p class="small">
+              ${mostExpenseCat
+                ? `En yüksek gider <strong>${mostExpenseCat}</strong> kategorisinde görünüyor. Bu alanda tavan limit belirleyip takip etmek, nakit akışını rahatlatabilir.`
+                : "Bu ay için gider kaydı yok, henüz analiz yapılacak veri oluşmamış."}
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    /************ SETTINGS (KATEGORİ + SABİT + EXPORT) ************/
+    function renderSettings() {
+      const c = document.getElementById("content");
+
+      c.innerHTML = `
+        <div class="grid">
+          <div class="card">
+            <h2>Kategoriler</h2>
+            <form id="catForm" class="inline">
+              <input name="cat" placeholder="Yeni kategori" required />
+              <button class="btn" type="submit">Ekle</button>
+            </form>
+            <div class="list" style="margin-top:10px;">
+              ${state.categories.map(cat=>`
+                <div class="row">
+                  <div>${cat}</div>
+                  <button class="btn secondary" data-cat="${cat}" style="padding:6px 10px;">Sil</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Sabit Gelir/Gider</h2>
+            <form id="recForm">
+              <label>Başlık
+                <input name="title" required />
+              </label>
+              <label>Tutar
+                <input name="amount" id="recAmount" required />
+              </label>
+              <div class="inline">
+                <label style="flex:1;">Tür
+                  <select name="type">
+                    <option value="gider">Gider</option>
+                    <option value="gelir">Gelir</option>
+                  </select>
+                </label>
+                <label style="flex:1;">Ayın Günü (1–31)
+                  <input name="day" type="number" min="1" max="31" required />
+                </label>
+              </div>
+              <label>Kategori
+                <select name="category">
+                  ${state.categories.map(c=>`<option value="${c}">${c}</option>`).join("")}
+                </select>
+              </label>
+              <button class="btn" type="submit">Ekle</button>
+            </form>
+            <div class="list" style="margin-top:10px;">
+              ${state.recurring.length ? state.recurring.map(r=>`
+                <div class="row">
+                  <div>
+                    <div>${r.title} (${r.day}. gün)</div>
+                    <div class="${r.type==="gelir"?"green":"red"}">${formatCurrency(r.amount)}</div>
+                  </div>
+                  <button class="btn secondary" data-rec="${r.id}" style="padding:6px 10px;">Sil</button>
+                </div>
+              `).join("") : "<div class='small'>Henüz sabit kayıt yok.</div>"}
+            </div>
+            <div class="small" style="margin-top:6px;">
+              Not: Eklediğiniz sabit kayıtlar, her ay seçtiğiniz günde otomatik olarak işlenir.
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Veri Yönetimi</h2>
+            <div class="actions" style="margin-bottom:10px;">
+              <button class="btn" id="exportCsvBtn">CSV Dışa Aktar</button>
+              <button class="btn secondary" id="exportExcelBtn">Excel Dışa Aktar</button>
+              <button class="btn secondary" id="exportPdfBtn">PDF Yazdır</button>
+            </div>
+            <div class="small">
+              Kayıtlarınızı CSV, Excel veya PDF olarak dışa aktarabilirsiniz.
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Kategori ekleme/silme
+      document.getElementById("catForm").onsubmit = ev => {
+        ev.preventDefault();
+        const val = ev.target.cat.value.trim();
+        if (!val || state.categories.includes(val)) return;
+        state.categories.push(val);
+        persist();
+        renderSettings();
+      };
+
+      c.querySelectorAll("[data-cat]").forEach(btn=>{
+        btn.onclick = () => {
+          const cat = btn.dataset.cat;
+          if (!confirm(`${cat} kategorisini silmek istiyor musunuz? Bu kategoriye ait kayıtlar 'Genel' olarak güncellenecek.`)) return;
+          state.entries.forEach(e => { if (e.category === cat) e.category = "Genel"; });
+          state.categories = state.categories.filter(c=>c!==cat);
+          if (!state.categories.includes("Genel")) state.categories.push("Genel");
+          persist();
+          renderSettings();
+        };
+      });
+
+      // Sabit gelir/gider ekleme
+      autoFormatAmount(document.getElementById("recAmount"));
+
+      document.getElementById("recForm").onsubmit = ev => {
+        ev.preventDefault();
+        const f = new FormData(ev.target);
+        const amount = parseAmount(f.get("amount"));
+        if (!amount) { alert("Geçerli bir tutar girin."); return; }
+
+        const rec = {
+          id: uid(),
+          title: f.get("title"),
+          amount,
+          type: f.get("type"),
+          day: Math.min(31, Math.max(1, Number(f.get("day") || 1))),
+          category: f.get("category") || "Genel"
+        };
+        state.recurring.push(rec);
+
+        // Mevcut ay için de hemen ekle
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+        const day = String(rec.day).padStart(2,"0");
+        const date = `${ym}-${day}`;
+        state.entries.push({
+          id: uid(),
+          type: rec.type,
+          amount: rec.amount,
+          desc: rec.title,
+          category: rec.category,
+          date,
+          planned: true,
+          createdAt: new Date().toISOString()
+        });
+
+        persist();
+        alert("Sabit kayıt eklendi ve bu aya uygulandı.");
+        renderSettings();
+      };
+
+      // Sabit kayıt silme
+      c.querySelectorAll("[data-rec]").forEach(btn=>{
+        btn.onclick = () => {
+          state.recurring = state.recurring.filter(r=>r.id !== btn.dataset.rec);
+          persist();
+          renderSettings();
+        };
+      });
+
+      // Export
+      document.getElementById("exportCsvBtn").onclick = exportCsv;
+      document.getElementById("exportExcelBtn").onclick = exportExcel;
+      document.getElementById("exportPdfBtn").onclick = exportPdf;
+    }
+
+    /************ EDIT / DELETE ************/
+    function attachEditDeleteHandlers(container, rerenderFn) {
+      container.querySelectorAll(".btn-edit").forEach(btn=>{
+        btn.onclick = () => openEdit(btn.dataset.id);
+      });
+      container.querySelectorAll(".btn-delete").forEach(btn=>{
+        btn.onclick = () => {
+          if (!confirm("Bu kaydı silmek istiyor musunuz?")) return;
+          state.entries = state.entries.filter(e=>e.id !== btn.dataset.id);
+          persist();
+          rerenderFn();
+        };
+      });
+    }
+
+    function openEdit(id) {
+      const entry = state.entries.find(e => e.id === id);
+      if (!entry) return;
+      editingId = id;
+
+      const modal = document.getElementById("editModal");
+      const form = document.getElementById("editForm");
+      const catSelect = form.querySelector('select[name="category"]');
+
+      catSelect.innerHTML = state.categories.map(c=>`<option value="${c}">${c}</option>`).join("");
+
+      form.type.value = entry.type;
+      form.amount.value = String(entry.amount).replace(".", ",");
+      form.desc.value = entry.desc || "";
+      form.category.value = entry.category || state.categories[0] || "Genel";
+      form.date.value = entry.date;
+
+      modal.classList.remove("hidden");
+    }
+
+    function closeEdit() {
+      editingId = null;
+      document.getElementById("editModal").classList.add("hidden");
+    }
+
+    // Modal kapatma: boş alana tıklayınca + İptal
+    (function initModal() {
+      const modal = document.getElementById("editModal");
+      const modalContent = document.querySelector("#editModal .modal-content");
+      modal.addEventListener("click", e => {
+        if (!modalContent.contains(e.target)) closeEdit();
+      });
+      document.getElementById("editCancel").onclick = closeEdit;
+    })();
+
+    document.getElementById("editForm").onsubmit = ev => {
+      ev.preventDefault();
+      if (!editingId) { closeEdit(); return; }
+      const entry = state.entries.find(e => e.id === editingId);
+      if (!entry) { closeEdit(); return; }
+
+      const f = new FormData(ev.target);
+      const amount = parseAmount(f.get("amount"));
+      if (!amount) { alert("Geçerli bir tutar girin."); return; }
+
+      entry.type = f.get("type");
+      entry.amount = amount;
+      entry.desc = f.get("desc") || "";
+      entry.category = f.get("category") || "Genel";
+      entry.date = f.get("date") || todayStr();
+      // planned mantığını bozmuyoruz (ilk oluşturulduğu gibi kalır)
+
+      persist();
+      closeEdit();
+      setTab(currentTab);
+    };
+
+    /************ EXPORTS ************/
+    function exportCsv() {
+      if (!state.entries.length) { alert("Dışa aktarılacak kayıt yok."); return; }
+      const header = ["Tarih","Tür","Tutar","Kategori","Açıklama"];
+      const rows = state.entries.map(e=>[
+        e.date,
+        e.type,
+        String(e.amount).replace(".", ","),
+        e.category || "",
+        (e.desc || "").replace(/;/g,",")
+      ]);
+      const csv = [header.join(";"), ...rows.map(r=>r.join(";"))].join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "butce.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportExcel() {
+      if (!state.entries.length) { alert("Dışa aktarılacak kayıt yok."); return; }
+      let html = "<table border='1'><tr><th>Tarih</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th></tr>";
+      state.entries.forEach(e=>{
+        html += `<tr>
+          <td>${e.date}</td>
+          <td>${e.type}</td>
+          <td>${e.amount}</td>
+          <td>${e.category || ""}</td>
+          <td>${(e.desc || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      const blob = new Blob([html], {type:"application/vnd.ms-excel"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "butce.xls";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportPdf() {
+      if (!state.entries.length) { alert("Yazdırılacak kayıt yok."); return; }
+      const win = window.open("", "_blank");
+      win.document.write("<html><head><title>Bütçe Kayıtları</title></head><body>");
+      win.document.write("<h1>Bütçe Kayıtları</h1>");
+      win.document.write("<table border='1' cellpadding='5' cellspacing='0'><tr><th>Tarih</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th></tr>");
+      state.entries.forEach(e=>{
+        win.document.write(`
+          <tr>
+            <td>${e.date}</td>
+            <td>${e.type}</td>
+            <td>${formatCurrency(e.amount)}</td>
+            <td>${e.category || ""}</td>
+            <td>${(e.desc || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</td>
+          </tr>
+        `);
+      });
+      win.document.write("</table></body></html>");
+      win.document.close();
+      win.print();
+    }
+
+    /************ INIT ************/
+    document.querySelectorAll(".tab").forEach(btn=>{
+      btn.onclick = () => setTab(btn.dataset.tab);
+    });
+
+    setTab("daily");
+
+    // PWA: Service Worker kaydı
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("service-worker.js")
+          .catch(err => {
+            console.error("Service worker kaydedilemedi:", err);
+          });
+      });
+    }
+  </script>
+</body>
+</html>
