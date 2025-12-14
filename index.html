@@ -313,7 +313,9 @@
       historyMonth: todayStr().slice(0,7),
       historyType: "all",
       historyCategory: "Tümü",
-      historyText: ""
+      historyText: "",
+      monthlyMonth: todayStr().slice(0,7),
+      statsMonth: todayStr().slice(0,7)
     };
 
     function ensureStateShape() {
@@ -328,6 +330,13 @@
       if (typeof state.meta.lastRecurringAppliedMonth !== "string" && state.meta.lastRecurringAppliedMonth !== null) {
         state.meta.lastRecurringAppliedMonth = null;
       }
+      state.entries.forEach(e => {
+        if (typeof e.confirmed !== "boolean") e.confirmed = false;
+        if (!e.createdAt) e.createdAt = new Date().toISOString();
+        if (e.actualDate === undefined) {
+          e.actualDate = (!e.planned || e.confirmed) ? (e.date || todayStr()) : null;
+        }
+      });
     }
     ensureStateShape();
 
@@ -353,7 +362,8 @@
           date,
           planned: true,
           confirmed: false,
-          createdAt: nowIso
+          createdAt: nowIso,
+          actualDate: null
         });
       });
 
@@ -458,17 +468,18 @@
           <div class="list">
             ${entries.length ? entries.map(e=>`
               <div class="row">
-                <div>
-                  <div class="${e.type==="gelir"?"green":"red"}">
-                    ${e.type==="gelir"?"+":"-"} ${formatCurrency(e.amount)}
+                  <div>
+                    <div class="${e.type==="gelir"?"green":"red"}">
+                      ${e.type==="gelir"?"+":"-"} ${formatCurrency(e.amount)}
+                    </div>
+                    <div class="small">${e.desc || "—"}</div>
+                    <div class="small">${e.date}</div>
+                    ${e.actualDate && e.actualDate !== e.date ? `<div class="small">Gerçekleşme: ${e.actualDate}</div>` : ""}
                   </div>
-                  <div class="small">${e.desc || "—"}</div>
-                  <div class="small">${e.date}</div>
-                </div>
-                <div class="actions">
-                  <span class="tag">${e.category || "Kategori"}</span>
-                  ${e.planned ? '<span class="tag">Planlı</span>' : ''}
-                  <button class="btn secondary btn-edit" data-id="${e.id}" style="padding:6px 10px;">Düzenle</button>
+                  <div class="actions">
+                    <span class="tag">${e.category || "Kategori"}</span>
+                    ${e.planned ? `<span class="tag">${e.confirmed ? "Planlı (tamamlandı)" : "Planlı (bekliyor)"}</span>` : ''}
+                    <button class="btn secondary btn-edit" data-id="${e.id}" style="padding:6px 10px;">Düzenle</button>
                   <button class="btn secondary btn-delete" data-id="${e.id}" style="padding:6px 10px;">Sil</button>
                 </div>
               </div>
@@ -494,9 +505,12 @@
     /************ MONTHLY ************/
     function renderMonthly() {
       const c = document.getElementById("content");
+      const ym = ui.monthlyMonth || todayStr().slice(0,7);
+      const [yy, mm] = ym.split("-");
+      const activeDate = new Date(`${yy || ""}-${mm || ""}-01`);
       const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = isNaN(activeDate) ? now.getFullYear() : activeDate.getFullYear();
+      const month = isNaN(activeDate) ? now.getMonth() : activeDate.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
       const dayMap = {};
@@ -514,10 +528,18 @@
       const totalIncome = Object.values(dayMap).reduce((s, d) => s + d.inc, 0);
       const totalExpense = Object.values(dayMap).reduce((s, d) => s + d.exp, 0);
       const netTotal = totalIncome - totalExpense;
+      const headerYm = `${year}-${String(month + 1).padStart(2,"0")}`;
 
       c.innerHTML = `
         <div class="card">
-          <h2>${year}-${String(month + 1).padStart(2, "0")} Aylık Görünüm</h2>
+          <div class="inline" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h2>${headerYm} Aylık Görünüm</h2>
+            <div class="inline" style="gap:6px;">
+              <button class="btn secondary" data-month-nav="-1" style="padding:8px 10px;">Önceki Ay</button>
+              <input type="month" id="monthlyPicker" value="${headerYm}" />
+              <button class="btn secondary" data-month-nav="1" style="padding:8px 10px;">Sonraki Ay</button>
+            </div>
+          </div>
           <div class="grid">
             ${Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
               const data = dayMap[d] || { inc: 0, exp: 0 };
@@ -559,6 +581,24 @@
           state.selectedDate = card.dataset.date;
           persist();
           setTab("daily");
+        };
+      });
+
+      const picker = document.getElementById("monthlyPicker");
+      picker.onchange = ev => {
+        ui.monthlyMonth = ev.target.value || todayStr().slice(0,7);
+        renderMonthly();
+      };
+
+      c.querySelectorAll('[data-month-nav]').forEach(btn => {
+        btn.onclick = () => {
+          const delta = Number(btn.dataset.monthNav) || 0;
+          const base = new Date(`${ui.monthlyMonth}-01`);
+          if (!isNaN(base)) {
+            base.setMonth(base.getMonth() + delta);
+            ui.monthlyMonth = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,"0")}`;
+            renderMonthly();
+          }
         };
       });
     }
@@ -623,9 +663,11 @@
                     <div class="${e.type==="gelir"?"green":"red"}">${e.type==="gelir"?"+":"-"} ${formatCurrency(e.amount)}</div>
                     <div class="small">${e.desc || "—"}</div>
                     <div class="small">${e.date}</div>
+                    ${e.actualDate && e.actualDate !== e.date ? `<div class="small">Gerçekleşme: ${e.actualDate}</div>` : ""}
                   </div>
                   <div class="actions">
                     <span class="tag">${e.category || "Kategori"}</span>
+                    ${e.planned ? `<span class="tag">${e.confirmed ? "Planlı (tamamlandı)" : "Planlı (bekliyor)"}</span>` : ''}
                     <button class="btn secondary btn-edit" data-id="${e.id}" style="padding:6px 10px;">Düzenle</button>
                     <button class="btn secondary btn-delete" data-id="${e.id}" style="padding:6px 10px;">Sil</button>
                   </div>
@@ -693,10 +735,9 @@
           if (!entry) return;
           const todayDate = todayStr();
           entry.confirmed = true;
-          entry.planned = false;
-          entry.date = todayDate;
-          entry.createdAt = new Date().toISOString();
-          state.selectedDate = todayDate;
+          entry.actualDate = todayDate;
+          entry.confirmedAt = new Date().toISOString();
+          state.selectedDate = entry.date || todayDate;
           persist();
           renderHistory();
         };
@@ -747,16 +788,20 @@
         const amount = parseAmount(rawAmount);
         if (!amount) { alert("Geçerli bir tutar girin."); return; }
 
-        const dateVal = f.get("date") || "";
+       const dateVal = f.get("date") || "";
+        const today = todayStr();
+        const isPlanned = !!dateVal && dateVal > today;
+        const targetDate = dateVal || today;
         const entry = {
           id: uid(),
           type: f.get("type"),
           amount,
           desc: f.get("desc") || "",
           category: f.get("category") || "Genel",
-          date: dateVal || todayStr(),
-          planned: !!dateVal,
-          createdAt: new Date().toISOString()
+          date: targetDate,
+          planned: isPlanned,
+          createdAt: new Date().toISOString(),
+          actualDate: isPlanned ? null : targetDate
         };
 
         state.entries.push(entry);
@@ -769,9 +814,7 @@
     /************ STATS ************/
     function renderStats() {
       const c = document.getElementById("content");
-      const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-
+      const ym = ui.statsMonth || todayStr().slice(0,7);
       const monthly = state.entries.filter(e => isRealEntry(e) && e.date.startsWith(ym));
       const totalIncome = monthly.filter(e=>e.type==="gelir").reduce((s,e)=>s+e.amount,0);
       const totalExpense = monthly.filter(e=>e.type==="gider").reduce((s,e)=>s+e.amount,0);
@@ -808,8 +851,15 @@
       });
 
       c.innerHTML = `
-        <div class="card">
-          <h2>📊 Aylık Cari Analiz (${ym})</h2>
+         <div class="card">
+          <div class="inline" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h2>📊 Aylık Cari Analiz (${ym})</h2>
+            <div class="inline" style="gap:6px;">
+              <button class="btn secondary" data-stats-nav="-1" style="padding:8px 10px;">Önceki Ay</button>
+              <input type="month" id="statsMonthPicker" value="${ym}">
+              <button class="btn secondary" data-stats-nav="1" style="padding:8px 10px;">Sonraki Ay</button>
+            </div>
+          </div>
           <div class="stats">
             <div class="pill">
               <strong>Toplam Gelir</strong>
@@ -876,6 +926,24 @@
           </div>
         </div>
       `;
+
+      const picker = document.getElementById("statsMonthPicker");
+      picker.onchange = ev => {
+        ui.statsMonth = ev.target.value || todayStr().slice(0,7);
+        renderStats();
+      };
+
+      c.querySelectorAll('[data-stats-nav]').forEach(btn => {
+        btn.onclick = () => {
+          const delta = Number(btn.dataset.statsNav) || 0;
+          const base = new Date(`${ui.statsMonth}-01`);
+          if (!isNaN(base)) {
+            base.setMonth(base.getMonth() + delta);
+            ui.statsMonth = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,"0")}`;
+            renderStats();
+          }
+        };
+      });
     }
 
     /************ SETTINGS (KATEGORİ + SABİT + EXPORT) ************/
@@ -943,17 +1011,20 @@
             </div>
           </div>
 
-          <div class="card">
-            <h2>Veri Yönetimi</h2>
-            <div class="actions" style="margin-bottom:10px;">
-              <button class="btn" id="exportCsvBtn">CSV Dışa Aktar</button>
-              <button class="btn secondary" id="exportExcelBtn">Excel Dışa Aktar</button>
-              <button class="btn secondary" id="exportPdfBtn">PDF Yazdır</button>
+           <div class="card">
+              <h2>Veri Yönetimi</h2>
+              <div class="actions" style="margin-bottom:10px;">
+                <button class="btn" id="exportCsvBtn">CSV Dışa Aktar</button>
+                <button class="btn secondary" id="exportExcelBtn">Excel Dışa Aktar</button>
+                <button class="btn secondary" id="exportPdfBtn">PDF Yazdır</button>
+                <button class="btn" id="exportBackupBtn">JSON Yedek Al</button>
+                <button class="btn secondary" id="importBackupBtn">JSON Yükle</button>
+                <input type="file" id="importBackupInput" accept="application/json" class="hidden" />
+              </div>
+              <div class="small">
+                Kayıtlarınızı CSV, Excel veya PDF olarak dışa aktarabilir veya JSON yedeği indirip başka bir cihazda yükleyebilirsiniz.
+              </div>
             </div>
-            <div class="small">
-              Kayıtlarınızı CSV, Excel veya PDF olarak dışa aktarabilirsiniz.
-            </div>
-          </div>
         </div>
       `;
 
@@ -1004,15 +1075,17 @@
         const day = String(rec.day).padStart(2,"0");
         const date = `${ym}-${day}`;
         state.entries.push({
-          id: uid(),
-          type: rec.type,
-          amount: rec.amount,
-          desc: rec.title,
-          category: rec.category,
-          date,
-          planned: true,
-          createdAt: new Date().toISOString()
-        });
+            id: uid(),
+            type: rec.type,
+            amount: rec.amount,
+            desc: rec.title,
+            category: rec.category,
+            date,
+            planned: true,
+            confirmed: false,
+            createdAt: new Date().toISOString(),
+            actualDate: null
+          });
 
         persist();
         alert("Sabit kayıt eklendi ve bu aya uygulandı.");
@@ -1032,6 +1105,14 @@
       document.getElementById("exportCsvBtn").onclick = exportCsv;
       document.getElementById("exportExcelBtn").onclick = exportExcel;
       document.getElementById("exportPdfBtn").onclick = exportPdf;
+      document.getElementById("exportBackupBtn").onclick = exportBackup;
+      const importInput = document.getElementById("importBackupInput");
+      document.getElementById("importBackupBtn").onclick = () => importInput.click();
+      importInput.onchange = ev => {
+        const file = ev.target.files?.[0];
+        if (file) importBackup(file);
+        importInput.value = "";
+      };
     }
 
     /************ EDIT / DELETE ************/
@@ -1109,13 +1190,15 @@
     /************ EXPORTS ************/
     function exportCsv() {
       if (!state.entries.length) { alert("Dışa aktarılacak kayıt yok."); return; }
-      const header = ["Tarih","Tür","Tutar","Kategori","Açıklama"];
+      const header = ["Planlanan Tarih","Gerçekleşme Tarihi","Tür","Tutar","Kategori","Açıklama","Planlı mı?"];
       const rows = state.entries.map(e=>[
         e.date,
+        e.actualDate || "",
         e.type,
         String(e.amount).replace(".", ","),
         e.category || "",
-        (e.desc || "").replace(/;/g,",")
+        (e.desc || "").replace(/;/g,","),
+        e.planned ? "Evet" : "Hayır"
       ]);
       const csv = [header.join(";"), ...rows.map(r=>r.join(";"))].join("\n");
       const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
@@ -1131,14 +1214,16 @@
 
     function exportExcel() {
       if (!state.entries.length) { alert("Dışa aktarılacak kayıt yok."); return; }
-      let html = "<table border='1'><tr><th>Tarih</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th></tr>";
+      let html = "<table border='1'><tr><th>Planlanan Tarih</th><th>Gerçekleşme Tarihi</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th><th>Planlı mı?</th></tr>";
       state.entries.forEach(e=>{
         html += `<tr>
           <td>${e.date}</td>
+          <td>${e.actualDate || ""}</td>
           <td>${e.type}</td>
           <td>${e.amount}</td>
           <td>${e.category || ""}</td>
           <td>${(e.desc || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</td>
+          <td>${e.planned ? "Evet" : "Hayır"}</td>
         </tr>`;
       });
       html += "</table>";
@@ -1158,21 +1243,54 @@
       const win = window.open("", "_blank");
       win.document.write("<html><head><title>Bütçe Kayıtları</title></head><body>");
       win.document.write("<h1>Bütçe Kayıtları</h1>");
-      win.document.write("<table border='1' cellpadding='5' cellspacing='0'><tr><th>Tarih</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th></tr>");
+      win.document.write("<table border='1' cellpadding='5' cellspacing='0'><tr><th>Planlanan Tarih</th><th>Gerçekleşme Tarihi</th><th>Tür</th><th>Tutar</th><th>Kategori</th><th>Açıklama</th><th>Planlı mı?</th></tr>");
       state.entries.forEach(e=>{
         win.document.write(`
           <tr>
             <td>${e.date}</td>
+            <td>${e.actualDate || ""}</td>
             <td>${e.type}</td>
             <td>${formatCurrency(e.amount)}</td>
             <td>${e.category || ""}</td>
             <td>${(e.desc || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</td>
+            <td>${e.planned ? "Evet" : "Hayır"}</td>
           </tr>
         `);
       });
       win.document.write("</table></body></html>");
       win.document.close();
       win.print();
+    }
+
+    function exportBackup() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "butce-yedek.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function importBackup(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed || typeof parsed !== "object") throw new Error("Geçersiz dosya");
+          state = { ...store.default(), ...parsed };
+          ensureStateShape();
+          persist();
+          alert("Yedek başarıyla yüklendi.");
+          setTab("daily");
+        } catch (err) {
+          alert("Yedek dosyası okunamadı. Lütfen geçerli bir JSON dosyası seçin.");
+          console.error(err);
+        }
+      };
+      reader.readAsText(file);
     }
 
     /************ INIT ************/
