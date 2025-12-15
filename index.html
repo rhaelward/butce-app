@@ -444,10 +444,13 @@
       c.innerHTML = `
         ${notifHtml}
         <div class="card">
-          <div class="inline" style="justify-content:space-between;">
+          <div class="inline" style="justify-content:space-between; gap:8px; flex-wrap:wrap;">
             <h2>${selected} Günlük Özeti</h2>
-            <input type="date" id="dayPicker" value="${selected}" />
+            <div class="inline" style="gap:6px;">
+             <input type="date" id="dayPicker" value="${selected}" />
+             <button class="btn secondary" id="goTodayBtn">Bugüne Git</button>
           </div>
+        </div>
           <div class="stats">
             <div class="pill">
               <strong>Gerçek Bakiye</strong>
@@ -494,6 +497,12 @@
         renderDaily();
       };
 
+     document.getElementById("goTodayBtn").onclick = () => {
+       state.selectedDate = todayStr();
+       persist();
+       renderDaily();
+      };
+      
       const gotoBtn = c.querySelector('[data-goto="planned"]');
       if (gotoBtn) {
         gotoBtn.onclick = () => setTab("history");
@@ -808,6 +817,9 @@
         state.entries.push(entry);
         state.selectedDate = entry.date;
         persist();
+        state.selectedDate = todayStr();
+        persist();
+
         setTab("daily");
       };
     }
@@ -1313,6 +1325,7 @@
   </script>
 </body>
 </html>
+
 
 
 
